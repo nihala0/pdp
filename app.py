@@ -1,73 +1,62 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Passenger Demand Prediction</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f6f8;
-        }
-        .container {
-            width: 400px;
-            margin: 80px auto;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        h2 {
-            text-align: center;
-        }
-        label {
-            font-weight: bold;
-        }
-        input, select, button {
-            width: 100%;
-            padding: 8px;
-            margin-top: 6px;
-            margin-bottom: 15px;
-        }
-        button {
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        .result {
-            text-align: center;
-            font-size: 18px;
-            color: green;
-            font-weight: bold;
-        }
-    </style>
-</head>
-<body>
+import streamlit as st
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
 
-<div class="container">
-    <h2>Passenger Demand Prediction</h2>
+st.set_page_config(page_title="Passenger Demand Prediction", layout="centered")
+st.title("🚍 Passenger Demand Prediction System ")
 
-    <label>Hour of Day</label>
-    <input type="number" min="0" max="23" placeholder="Enter hour (0–23)">
+uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 
-    <label>Route ID</label>
-    <input type="number" placeholder="Enter route ID">
+if uploaded_file is not None:
+    try:
+        df = pd.read_csv(uploaded_file)
 
-    <label>Day Type</label>
-    <select>
-        <option>Weekday</option>
-        <option>Weekend</option>
-    </select>
+        required_cols = ["Hour", "Day_Type", "Route_ID", "Passenger_Count"]
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            st.error(f"Missing required columns: {missing}")
+        else:
+            day_dict = {
+                "Monday": 0, "Tuesday": 1, "Wednesday": 2,
+                "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6
+            }
 
-    <button>Predict Passenger Demand</button>
+            if pd.api.types.is_numeric_dtype(df["Day_Type"]):
+                df["day_num"] = df["Day_Type"].astype(int)
+            else:
+                df["day_num"] = df["Day_Type"].astype(str).str.strip().map(day_dict)
 
-    <div class="result">
-        Predicted Passenger Count: —
-    </div>
-</div>
+            X = df[["Hour", "day_num", "Route_ID"]]
+            y = df["Passenger_Count"]
 
-</body>
-</html>
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=30
+            )
+
+            model = RandomForestRegressor(n_estimators=100, random_state=30)
+            model.fit(X_train, y_train)
+
+            y_pred = model.predict(X_test)
+            y_pred_int = np.round(y_pred).astype(int)
+
+            results_df = pd.DataFrame({
+                "Actual Passenger Count": y_test.values,
+                "Predicted Passenger Count": y_pred_int
+            })
+
+            st.subheader("📊 Actual vs Predicted Passenger Count (First 5 Rows)")
+            st.dataframe(results_df.head())
+
+            csv = results_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="⬇️ Download Full Prediction Results",
+                data=csv,
+                file_name="passenger_demand_predictions.csv",
+                mime="text/csv"
+            )
+
+    except Exception as e:
+        st.error("⚠️ Something went wrong while processing your file.")
+        st.text(f"Technical details: {e}")
